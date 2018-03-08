@@ -200,8 +200,8 @@ if __name__=="__main__":
     ap.add_argument("--all-objects","-a",dest="allobjects",action="store_true",
             help="disable filtering, allways output all available objects")
     ap.add_argument("--filter","-f",action="store",default="",
-            help="specify a filter list (one per line: name(partial), id or "\
-                    "designator(partial); lines starting with # count as comments)")
+            help="specify a filter list (if a none exsistent file is specified "\
+                    "the file is created and filled with a template of the syntax)")
     ap.add_argument("--output","-o",action="store",default="tles.txt",
             help="specify the output file (default is \"tles.txt\")")
     ap.add_argument("--user-tles","-u",action="store",default="",
@@ -217,11 +217,73 @@ if __name__=="__main__":
     _verbose=ns.verbose
     _quiet=ns.quiet
 
+    filterlist={"name":[],"id":[],"launch":[]}
     if ns.filter=="" and not ns.allobjects:
         if not _quiet:
             print("ERROR: Not specifying a filter without requesting all TLEs "\
                     "is invalid!",file=sys.stderr)
         sys.exit(2)
+    elif ns.filter!="":
+        if _verbose:
+            print("Loading filter list from "+nc.filter+" ...",file=sys.stderr)
+        try:
+            with open(ns.filter,"rt") as ff:
+                for l in ff:
+                    l=l.rstrip("\r\n")
+                    if len(l)<1 or l[0]=="#":
+                        continue
+                    elif l[0]=="?" or l[0]=="\\":
+                        filterlist["name"].append(l[1:])
+                    elif l[0]=="$":
+                        filterlist["id"].append(l[1:])
+                    elif l[0]=="~":
+                        filterlist["launch"].append(l[1:])
+                    else:
+                        filterlist["name"].append(l)
+            if _verbose:
+                print("Filter list successfull loaded. \n"+str(filterlist),
+                        file=sys.stderr)
+        except FileNotFoundError as fnf:
+            if not _quiet:
+                print("WARNING: Filter file does not exist, creating a template "\
+                        "which contains an example!",file=sys.stderr)
+            try:
+                with open(ns.filter,"wt") as ff:
+                    ff.write("# Filter file for the TLE update script\n"\
+                            "# This is a template, adjust to your needs\n\n"\
+                            "# Lines starting with \"#\" are comments and ignored\n\n"\
+                            "# Filter for satellite name:\n"\
+                            "# The filter compares the names converted to upper "\
+                            "case and matches even if the name in the tle is longer\n"\
+                            "# Names are prefixed with \"?\" or without a prefix\n"\
+                            "#?NOAA\n"\
+                            "# ^^Matches all satellites with a name starting with "\
+                            "\"NOAA\"\n\n"\
+                            "# Filter for satellite id:\n"\
+                            "# Ids are prefixed with \"$\"\n"\
+                            "#$40977\n"\
+                            "# ^^Matches the satellite with the NORAD ID 40977\n\n"\
+                            "# Filter for international (launch) designator:\n"\
+                            "# Designators are prefixed with \"~\" and match even "\
+                            "if only the beginning is specified\n"\
+                            "#~17036N\n"\
+                            "# ^^Matches the satellite launched on the 36th launch "\
+                            "of 2017 which is designated object \"N\" of the launch\n"\
+                            "#~18\n"\
+                            "# ^^Matches all satellites launched in 2018\n\n\n")
+                if _verbose:
+                    print("Template filter successfully created",file=sys.stderr)
+                sys.exit(0)
+            except IOError as ioe:
+                if not _quiet:
+                    print("ERROR: Failed to read file "+ns.filter+"! ("+str(ioe)+")",
+                            file=sys.stderr)
+                sys.exit(1)
+        except IOError as ioe:
+            if not _quiet:
+                print("ERROR: Failed to read file "+ns.filter+"! ("+str(ioe)+")",
+                        file=sys.stderr)
+            sys.exit(1)
 
     tles=[]
     if not ns.no_online:
@@ -249,34 +311,24 @@ if __name__=="__main__":
             print("ERROR: Failed to read file "+ns.user_tles+"! Skipping! ("+str(ioe)+")",
                     file=sys.stderr)
 
-    if not ns.allobjects and ns.filter!="":
+    if not ns.allobjects and any(len(filterlist[k])>0 for k in filterlist.keys()):
         if _verbose:
             print("Filtering "+str(len(tles))+" TLEs based on whitelist "+ns.filter+" ...",
                     file=sys.stderr)
         atles=tles
         tles=[]
-        try:
-            filtlist=[]
-            with open(ns.filter,"rt") as ff:
-                for l in ff:
-                    if l.startswith("#"):
-                        continue
-                    filtlist.append(l.rstrip("\r\n"))
-            # TODO find more efficient way to do the filtering
-            for tle in atles:
-                for filt in filtlist:
-                    if tle.name.upper().startswith(filt.upper()):
-                        tles.append(tle)
-                    elif ("%(year)02d%(launch)03d%(object)-s" % tle.desig).upper()\
-                            .startswith(filt.upper()):
-                        tles.append(tle)
-                    elif all(c.isdigit() for c in filt) and tle.id==int(filt):
-                        tles.append(tle)
-        except IOError as ioe:
-            if not _quiet:
-                print("ERROR: Failed to read file "+ns.filter+"! ("+str(ioe)+")",
-                        file=sys.stderr)
-            sys.exit(1)
+        # TODO find more efficient way to do the filtering
+        for tle in atles:
+            for nfilt in filtlist["name"]:
+                if tle.name.upper().startswith(nfilt.upper()):
+                    tles.append(tle)
+            for lfilt in filtlist["launch"]:
+                if ("%(year)02d%(launch)03d%(object)-s" % tle.desig).upper()\
+                        .startswith(lfilt.upper()):
+                    tles.append(tle)
+            for ifilt in filtlist["id"]:
+                if all(c.isdigit() for c in ifilt) and tle.id==int(filt):
+                    tles.append(tle)
         if _verbose:
             print("Filtering done, selected "+str(len(tles))+"/"+str(len(atles))+
                     " TLEs",file=sys.stderr)
