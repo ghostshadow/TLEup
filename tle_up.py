@@ -40,12 +40,14 @@ class tle:
         line2=b"1 %05dU %02d%03d%-3b %02d%012.8f %c.%08d %c%05d%+01d %c%05d%+01d 0 %04d" %\
                 (self.id,self.desig["year"]%100,self.desig["launch"],\
                 self.desig["object"].encode("ascii"),self.epoch["year"]%100,\
-                self.epoch["day"],b"-" if self.fdmm<0 else b" ",self.fdmm*1.e8,\
+                self.epoch["day"],b"-" if self.fdmm<0 else b" ",abs(self.fdmm*1.e8),\
                 b"-" if self.sdmm<0 else b" ",\
-                self.sdmm*pow(10,5-(ceil(log(abs(self.sdmm),10)) if abs(self.sdmm)>0 else 0)),\
+                abs(self.sdmm*pow(10,5-(ceil(log(abs(self.sdmm),10)) if \
+                abs(self.sdmm)>0 else 0))),\
                 (ceil(log(abs(self.sdmm),10)) if abs(self.sdmm)>0 else 0),\
                 b"-" if self.bstar<0 else b" ",\
-                self.bstar*pow(10,5-(ceil(log(abs(self.bstar),10)) if abs(self.bstar)>0 else 0)),\
+                abs(self.bstar*pow(10,5-(ceil(log(abs(self.bstar),10)) if \
+                abs(self.bstar)>0 else 0))),\
                 (ceil(log(abs(self.bstar),10)) if abs(self.bstar)>0 else 0),\
                 self.nr,)
         line3=b"2 %05d %08.4f %08.4f %07d %08.4f %08.4f %011.8f%05d" %\
@@ -215,6 +217,12 @@ if __name__=="__main__":
     _verbose=ns.verbose
     _quiet=ns.quiet
 
+    if ns.filter=="" and not ns.allobjects:
+        if not _quiet:
+            print("ERROR: Not specifying a filter without requesting all TLEs "\
+                    "is invalid!",file=sys.stderr)
+        sys.exit(2)
+
     tles=[]
     if not ns.no_online:
         if _verbose:
@@ -274,9 +282,6 @@ if __name__=="__main__":
                     " TLEs",file=sys.stderr)
     elif _verbose and ns.allobjects:
         print("Filtering disable by user request ...",file=sys.stderr)
-    elif not _quiet and not ns.allobjects and ns.filter=="":
-        print("WARNING: Wanting a filtered list but supplying no filter results "\
-                "in a empty blacklist (i.e. all elements passed on)!",file=sys.stderr)
 
     if ns.list:
         if _verbose:
