@@ -225,7 +225,7 @@ if __name__=="__main__":
         sys.exit(2)
     elif ns.filter!="":
         if _verbose:
-            print("Loading filter list from "+nc.filter+" ...",file=sys.stderr)
+            print("Loading filter list from "+ns.filter+" ...",file=sys.stderr)
         try:
             with open(ns.filter,"rt") as ff:
                 for l in ff:
@@ -239,18 +239,21 @@ if __name__=="__main__":
                     elif l[0]=="~":
                         filterlist["launch"].append(l[1:])
                     elif l[0]=="&":
-                        match=re.fullmatch("^&(\S+)\s+(({\s*([\d.+-]+)\s*,\s*([\d.+-]+)"\
-                                "\s*})|([\d.+-]+))\s*$",l)
-                        if match and match.group(5) is not None:
+                        match=re.fullmatch("^&(\S+)\s+{\s*([\d.+-eE]+)\s*,"\
+                                "\s*([\d.+-eE]+)\s*}\s*$",l)
+                        if match:
                             filterlist["field"].append({"field":match.group(1),
-                                "min":float(match.group(4)),"max":float(match.group(5))})
-                        elif match and match.group(6) is not None:
-                            filterlist["filed"].append({"filed":match.group(1),
-                                "min":float(match.group(6)),"max":float(match.group(6))})
+                                "min":float(match.group(2)),"max":float(match.group(3))})
                         elif not _quiet:
                             print("ERROR: Invalid filter \""+l+"\"",file=sys.stderr)
                     else:
                         filterlist["name"].append(l)
+            if not any(len(filterlist[k])>0 for k in filterlist.keys()):
+                if not _quiet:
+                    print("ERROR: Filter list contains no valid filters but "\
+                            "to get an unfiltered list you have to use the "\
+                            "\"-a\" paramter!",file=sys.stderr)
+                sys.exit(1)
             if _verbose:
                 print("Filter list successfull loaded. \n"+str(filterlist),
                         file=sys.stderr)
@@ -284,9 +287,8 @@ if __name__=="__main__":
                             "# ^^Matches all satellites launched in 2018\n\n"\
                             "# Advanced filter for TLE elements:\n"\
                             "# TLE element name prefixed with \"&\" followed by "\
-                            "a space and either a specific value or a range "\
-                            "(min and max) of values enclosed in curly braces, "\
-                            "seperated by a comma\n"\
+                            "a space and a range (min and max) of values enclosed "\
+                            "in curly braces, seperated by a comma\n"\
                             "# Available TLE elements are:\n"\
                             "# \"fdmm\"=First derivate of mean motion\n"\
                             "# \"sdmm\"=Second derivate of mean motion\n"\
@@ -299,9 +301,7 @@ if __name__=="__main__":
                             "# \"mm\"=Mean motion\n"\
                             "#&inc {40,60}\n"\
                             "# ^^Matches all satellites with a inclination between "\
-                            "40° and 60°\n"\
-                            "#&inc 0\n"\
-                            "# ^^Matches all satellites with exactly 0° inclination\n\n\n")
+                            "40° and 60°\n\n\n")
                 if _verbose:
                     print("Template filter successfully created",file=sys.stderr)
                 sys.exit(0)
@@ -361,7 +361,7 @@ if __name__=="__main__":
                 if all(c.isdigit() for c in ifilt) and tle.id==int(filt):
                     tles.append(tle)
             for ffilt in filterlist["field"]:
-                if getattr(tle,ffilt["field"])>ffilt["min"] and\
+                if getattr(tle,ffilt["field"])>=ffilt["min"] and\
                         getattr(tle,ffilt["field"])<ffilt["max"]:
                     tles.append(tle)
         if _verbose:
