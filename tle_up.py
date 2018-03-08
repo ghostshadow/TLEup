@@ -26,10 +26,10 @@ class tle:
         self.fdmm=0.
         self.sdmm=0.
         self.bstar=0.
-        self.nr=0
+        self.nr=0 # tle nr (inc with new release)
         self.inc=0.
         self.raan=0.
-        self.exc=0.
+        self.ecc=0.
         self.aop=0.
         self.ma=0.
         self.mm=0.
@@ -51,7 +51,7 @@ class tle:
                 (ceil(log(abs(self.bstar),10)) if abs(self.bstar)>0 else 0),\
                 self.nr,)
         line3=b"2 %05d %08.4f %08.4f %07d %08.4f %08.4f %011.8f%05d" %\
-                (self.id,self.inc,self.raan,self.exc*1.e7,self.aop,\
+                (self.id,self.inc,self.raan,self.ecc*1.e7,self.aop,\
                 self.ma,self.mm,self.revol,)
         l2cs=0
         for c in line2:
@@ -112,7 +112,7 @@ def read_tles_from_bytes(f):
                     continue
                 ctle.inc=float(match.group(3))
                 ctle.raan=float(match.group(4))
-                ctle.exc=float("0."+match.group(5))
+                ctle.ecc=float("0."+match.group(5))
                 ctle.aop=float(match.group(6))
                 ctle.ma=float(match.group(7))
                 ctle.mm=float(match.group(8))
@@ -217,7 +217,7 @@ if __name__=="__main__":
     _verbose=ns.verbose
     _quiet=ns.quiet
 
-    filterlist={"name":[],"id":[],"launch":[]}
+    filterlist={"name":[],"id":[],"launch":[],"field":[]}
     if ns.filter=="" and not ns.allobjects:
         if not _quiet:
             print("ERROR: Not specifying a filter without requesting all TLEs "\
@@ -238,6 +238,17 @@ if __name__=="__main__":
                         filterlist["id"].append(l[1:])
                     elif l[0]=="~":
                         filterlist["launch"].append(l[1:])
+                    elif l[0]=="&":
+                        match=re.fullmatch("^&(\S+)\s+(({\s*([\d.+-]+)\s*,\s*([\d.+-]+)"\
+                                "\s*})|([\d.+-]+))\s*$",l)
+                        if match and match.group(5) is not None:
+                            filterlist["field"].append({"field":match.group(1),
+                                "min":float(match.group(4)),"max":float(match.group(5))})
+                        elif match and match.group(6) is not None:
+                            filterlist["filed"].append({"filed":match.group(1),
+                                "min":float(match.group(6)),"max":float(match.group(6))})
+                        elif not _quiet:
+                            print("ERROR: Invalid filter \""+l+"\"",file=sys.stderr)
                     else:
                         filterlist["name"].append(l)
             if _verbose:
@@ -270,7 +281,27 @@ if __name__=="__main__":
                             "# ^^Matches the satellite launched on the 36th launch "\
                             "of 2017 which is designated object \"N\" of the launch\n"\
                             "#~18\n"\
-                            "# ^^Matches all satellites launched in 2018\n\n\n")
+                            "# ^^Matches all satellites launched in 2018\n\n"\
+                            "# Advanced filter for TLE elements:\n"\
+                            "# TLE element name prefixed with \"&\" followed by "\
+                            "a space and either a specific value or a range "\
+                            "(min and max) of values enclosed in curly braces, "\
+                            "seperated by a comma\n"\
+                            "# Available TLE elements are:\n"\
+                            "# \"fdmm\"=First derivate of mean motion\n"\
+                            "# \"sdmm\"=Second derivate of mean motion\n"\
+                            "# \"bstar\"=B*-drag term\n"\
+                            "# \"inc\"=Inclination\n"\
+                            "# \"raan\"=Right ascention of ascending node\n"\
+                            "# \"ecc\"=Eccentricity\n"\
+                            "# \"aop\"=Argument of preigee\n"\
+                            "# \"ma\"=Mean anomaly\n"\
+                            "# \"mm\"=Mean motion\n"\
+                            "#&inc {40,60}\n"\
+                            "# ^^Matches all satellites with a inclination between "\
+                            "40° and 60°\n"\
+                            "#&inc 0\n"\
+                            "# ^^Matches all satellites with exactly 0° inclination\n\n\n")
                 if _verbose:
                     print("Template filter successfully created",file=sys.stderr)
                 sys.exit(0)
@@ -319,15 +350,19 @@ if __name__=="__main__":
         tles=[]
         # TODO find more efficient way to do the filtering
         for tle in atles:
-            for nfilt in filtlist["name"]:
+            for nfilt in filterlist["name"]:
                 if tle.name.upper().startswith(nfilt.upper()):
                     tles.append(tle)
-            for lfilt in filtlist["launch"]:
+            for lfilt in filterlist["launch"]:
                 if ("%(year)02d%(launch)03d%(object)-s" % tle.desig).upper()\
                         .startswith(lfilt.upper()):
                     tles.append(tle)
-            for ifilt in filtlist["id"]:
+            for ifilt in filterlist["id"]:
                 if all(c.isdigit() for c in ifilt) and tle.id==int(filt):
+                    tles.append(tle)
+            for ffilt in filterlist["field"]:
+                if getattr(tle,ffilt["field"])>ffilt["min"] and\
+                        getattr(tle,ffilt["field"])<ffilt["max"]:
                     tles.append(tle)
         if _verbose:
             print("Filtering done, selected "+str(len(tles))+"/"+str(len(atles))+
