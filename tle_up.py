@@ -1,8 +1,8 @@
 #!/usr/bin/python3
 """
-Update Program for Two-Line-Element Lists
+Update Program for Two-Line-Element Lists.
 
-Generate a filtered TLE list from current online TLE data and
+Generate a filtered TLE list from current online TLE data (from celestrak.com) and
 user provided manual TLE data.
 """
 
@@ -194,17 +194,18 @@ if __name__=="__main__":
     import argparse
     ap=argparse.ArgumentParser(description=__doc__,add_help=False)
     ap.add_argument("--help",action="help",help="Print this help message")
-    ap.add_argument("--list","-l",action="store_true",help="only list object "\
-            "names and id numbers, do not generate list. (in combination with \"-a\": "\
+    ap.add_argument("--list","-l",action="store_true",help="only list "\
+            "names and id numbers of the objects, which are selected, "\
+            "do not generate tle file. (in combination with \"-a\": "\
             "list all available objects)")
     ap.add_argument("--all-objects","-a",dest="allobjects",action="store_true",
             help="disable filtering, allways output all available objects")
-    ap.add_argument("--filter","-f",action="store",default="",
-            help="specify a filter list (if a none exsistent file is specified "\
+    ap.add_argument("--filter","-f",action="store",type=str,default=None,
+            help="specify a filter list (if a none exsistent file is specified, "\
                     "the file is created and filled with a template of the syntax)")
     ap.add_argument("--output","-o",action="store",default="tles.txt",
             help="specify the output file (default is \"tles.txt\")")
-    ap.add_argument("--user-tles","-u",action="store",default="",
+    ap.add_argument("--user-tles","-u",action="store",type=str,default=None,
             help="specify the list of manual tles")
     ap.add_argument("--no-online","-n",action="store_true",
             help="disable reading online tles, only use user defined tles")
@@ -218,12 +219,12 @@ if __name__=="__main__":
     _quiet=ns.quiet
 
     filterlist={"name":[],"id":[],"launch":[],"field":[]}
-    if ns.filter=="" and not ns.allobjects:
+    if ns.filter is None and not ns.allobjects:
         if not _quiet:
             print("ERROR: Not specifying a filter without requesting all TLEs "\
                     "is invalid!",file=sys.stderr)
         sys.exit(2)
-    elif ns.filter!="":
+    elif ns.filter is not None:
         if _verbose:
             print("Loading filter list from "+ns.filter+" ...",file=sys.stderr)
         try:
@@ -317,16 +318,8 @@ if __name__=="__main__":
             sys.exit(1)
 
     tles=[]
-    if not ns.no_online:
-        if _verbose:
-            print("Fetching online TLEs ...",file=sys.stderr)
-        tles.extend(get_celestrak_tle())
-        if _verbose:
-            print("Done fetching online TLEs ("+str(len(tles))+" tles found)",
-                    file=sys.stderr)
-
     try:
-        if ns.user_tles!="":
+        if ns.user_tles is not None:
             with open(ns.user_tles,"rb") as uf:
                 if _verbose:
                     print("Reading user defined TLEs ...",file=sys.stderr)
@@ -340,6 +333,14 @@ if __name__=="__main__":
     except IOError as ioe:
         if not _quiet:
             print("ERROR: Failed to read file "+ns.user_tles+"! Skipping! ("+str(ioe)+")",
+                    file=sys.stderr)
+
+    if not ns.no_online:
+        if _verbose:
+            print("Fetching online TLEs ...",file=sys.stderr)
+        tles.extend(get_celestrak_tle())
+        if _verbose:
+            print("Done fetching online TLEs ("+str(len(tles))+" tles found)",
                     file=sys.stderr)
 
     if not ns.allobjects and any(len(filterlist[k])>0 for k in filterlist.keys()):
