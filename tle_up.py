@@ -218,6 +218,7 @@ if __name__=="__main__":
     _verbose=ns.verbose
     _quiet=ns.quiet
 
+# read filter
     filterlist={"name":[],"id":[],"launch":[],"field":[]}
     if ns.filter is None and not ns.allobjects:
         if not _quiet:
@@ -262,6 +263,7 @@ if __name__=="__main__":
             if not _quiet:
                 print("WARNING: Filter file does not exist, creating a template "\
                         "which contains an example!",file=sys.stderr)
+# create filter template
             try:
                 with open(ns.filter,"wt") as ff:
                     ff.write("# Filter file for the TLE update script\n"\
@@ -318,6 +320,7 @@ if __name__=="__main__":
             sys.exit(1)
 
     tles=[]
+# load user tles
     try:
         if ns.user_tles is not None:
             with open(ns.user_tles,"rb") as uf:
@@ -335,6 +338,7 @@ if __name__=="__main__":
             print("ERROR: Failed to read file "+ns.user_tles+"! Skipping! ("+str(ioe)+")",
                     file=sys.stderr)
 
+# load online tles
     if not ns.no_online:
         if _verbose:
             print("Fetching online TLEs ...",file=sys.stderr)
@@ -343,6 +347,23 @@ if __name__=="__main__":
             print("Done fetching online TLEs ("+str(len(tles))+" tles found)",
                     file=sys.stderr)
 
+# deduplicate tles
+    if _verbose:
+        print("Deduplicating TLEs (based on ID)...",file=sys.stderr)
+    tles_old=tles
+    tles=[]
+    for tle in tles_old:
+        if not any(t.id==tle.id for t in tles):
+            tles.append(tle)
+            continue
+        if _verbose:
+            print("Duplicate TLE, dropping ... ("+str(tle.name)+": "+str(tle.id)+")",
+                    file=sys.stderr)
+    del tles_old
+    if _verbose:
+        print("Deduplication done, "+str(len(tles))+" TLEs remaining",file=sys.stderr)
+
+# filter tles
     if not ns.allobjects and any(len(filterlist[k])>0 for k in filterlist.keys()):
         if _verbose:
             print("Filtering "+str(len(tles))+" TLEs based on whitelist "+ns.filter+" ...",
@@ -359,7 +380,7 @@ if __name__=="__main__":
                         .startswith(lfilt.upper()):
                     tles.append(tle)
             for ifilt in filterlist["id"]:
-                if all(c.isdigit() for c in ifilt) and tle.id==int(filt):
+                if all(c.isdigit() for c in ifilt) and tle.id==int(ifilt):
                     tles.append(tle)
             for ffilt in filterlist["field"]:
                 if getattr(tle,ffilt["field"])>=ffilt["min"] and\
@@ -371,6 +392,7 @@ if __name__=="__main__":
     elif _verbose and ns.allobjects:
         print("Filtering disable by user request ...",file=sys.stderr)
 
+# list tles
     if ns.list:
         if _verbose:
             print("Listing TLE objects ...",file=sys.stderr)
@@ -380,6 +402,7 @@ if __name__=="__main__":
             print("Done listing TLE objects ...",file=sys.stderr)
         sys.exit(0)
 
+# save tles to file
     try:
         with open(ns.output,"wb") as of:
             if _verbose:
