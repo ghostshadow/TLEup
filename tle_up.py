@@ -1,4 +1,8 @@
 #!/usr/bin/python3
+##
+# Copyright (c) 2018 Ghostshadow
+# MIT License (see LICENSE file)
+##
 """
 Update Program for Two-Line-Element Lists.
 
