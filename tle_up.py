@@ -36,6 +36,7 @@ class tle:
         self.revol=0
 
     def __bytes__(self):
+        """Creates the propper TLE formating"""
         line1=self.name.encode("ascii").ljust(24,b" ")
         line2=b"1 %05dU %02d%03d%-3b %02d%012.8f %c.%08d %c%05d%+01d %c%05d%+01d 0 %04d" %\
                 (self.id,self.desig["year"]%100,self.desig["launch"],\
@@ -77,6 +78,7 @@ class tle:
         return bytes(self).decode("ascii")
 
 def read_tles_from_bytes(f):
+    """Read TLEs from multible byte lines"""
     lines=f.splitlines()
 
     tles=[]
@@ -174,6 +176,7 @@ def read_tles_from_bytes(f):
 
 
 def get_celestrak_tle():
+    """Search celestrak.com for tle files and parse all you find"""
     if _verbose:
         print("Gathering online TLE files ...",file=sys.stderr)
     with rq.urlopen("http://www.celestrak.com/NORAD/elements/") as resp:
