@@ -4,7 +4,7 @@
 # MIT License (see LICENSE file)
 ##
 """
-Update Program for Two-Line-Element Lists.
+Update Program for Two-Line-Element Lists. (Version 2)
 
 Generate a filtered TLE list from current online TLE data (from celestrak.com) and
 user provided manual TLE data.
@@ -81,7 +81,7 @@ class tle:
     def __str__(self):
         return bytes(self).decode("ascii")
 
-def read_tles_from_bytes(f):
+def parse_tle_bytes(f):
     """Read TLEs from multible byte lines"""
     lines=f.splitlines()
 
@@ -178,44 +178,25 @@ def read_tles_from_bytes(f):
         state="none"
     return tles
 
-
-def get_celestrak_tle():
-    """Search celestrak.com for tle files and parse all you find"""
-    if _verbose:
-        print("Gathering online TLE files ...",file=sys.stderr)
-    with rq.urlopen("http://www.celestrak.com/NORAD/elements/") as resp:
-        tles=[]
-        for f in re.findall("\".*\.txt\"",resp.read().decode()):
-            if _verbose:
-                oc=len(tles)
-                print("Reading "+f+" ...",file=sys.stderr)
-            with rq.urlopen("http://www.celestrak.com/NORAD/elements/"+f.strip("\"")) as tf:
-                tles.extend(read_tles_from_bytes(tf.read()))
-            if _verbose:
-                print("Found "+str(len(tles)-oc)+" tles in "+f,file=sys.stderr)
-    return tles
-
-
-        
 if __name__=="__main__":
     import argparse
     ap=argparse.ArgumentParser(description=__doc__,add_help=False)
     ap.add_argument("--help",action="help",help="Print this help message")
     ap.add_argument("--list","-l",action="store_true",help="only list "\
             "names and id numbers of the objects, which are selected, "\
-            "do not generate tle file. (in combination with \"-a\": "\
-            "list all available objects)")
-    ap.add_argument("--all-objects","-a",dest="allobjects",action="store_true",
-            help="disable filtering, allways output all available objects")
-    ap.add_argument("--filter","-f",action="store",type=str,default=None,
-            help="specify a filter list (if a none exsistent file is specified, "\
-                    "the file is created and filled with a template of the syntax)")
+            "do not generate tle file.")
+    ap.add_argument("--filter","-f",action="store",type=str,default=None
+            help="specify a filter list; if a none exsistent file is specified, "\
+                    "the file is created and filled with a template of the syntax "\
+                    "(if none is specified then online loading is disabled)")
     ap.add_argument("--output","-o",action="store",default="tles.txt",
             help="specify the output file (default is \"tles.txt\")")
     ap.add_argument("--user-tles","-u",action="store",type=str,default=None,
-            help="specify the list of manual tles")
+            help="specify the list of manual tles, which will always be included")
     ap.add_argument("--no-online","-n",action="store_true",
             help="disable reading online tles, only use user defined tles")
+    ap.add_argument("--force-user-filtering",action="store_true",
+            help="force the user tles to be filtered by the filter as well")
     apvg=ap.add_mutually_exclusive_group()
     apvg.add_argument("--verbose","-v",action="store_true",
             help="print progess messages to stderr")
@@ -227,12 +208,7 @@ if __name__=="__main__":
 
 # read filter
     filterlist={"name":[],"id":[],"launch":[],"field":[]}
-    if ns.filter is None and not ns.allobjects:
-        if not _quiet:
-            print("ERROR: Not specifying a filter without requesting all TLEs "\
-                    "is invalid!",file=sys.stderr)
-        sys.exit(2)
-    elif ns.filter is not None:
+    if ns.filter is not None:
         if _verbose:
             print("Loading filter list from "+ns.filter+" ...",file=sys.stderr)
         try:
@@ -247,8 +223,8 @@ if __name__=="__main__":
                         filterlist["id"].append(l[1:])
                     elif l[0]=="~":
                         filterlist["launch"].append(l[1:])
-                    elif l[0]=="&":
-                        match=re.fullmatch("^&(\S+)\s+{\s*([\d.+-eE]+)\s*,"\
+                    elif l[0]=="%":
+                        match=re.fullmatch("^%(inc|apo|peri)\s+{\s*([\d.+-eE]+)\s*,"\
                                 "\s*([\d.+-eE]+)\s*}\s*$",l)
                         if match:
                             filterlist["field"].append({"field":match.group(1),
@@ -295,21 +271,14 @@ if __name__=="__main__":
                             "of 2017 which is designated object \"N\" of the launch\n"\
                             "#~18\n"\
                             "# ^^Matches all satellites launched in 2018\n\n"\
-                            "# Advanced filter for TLE elements:\n"\
-                            "# TLE element name prefixed with \"&\" followed by "\
-                            "a space and a range (min and max) of values enclosed "\
-                            "in curly braces, seperated by a comma\n"\
-                            "# Available TLE elements are:\n"\
-                            "# \"fdmm\"=First derivate of mean motion\n"\
-                            "# \"sdmm\"=Second derivate of mean motion\n"\
-                            "# \"bstar\"=B*-drag term\n"\
-                            "# \"inc\"=Inclination\n"\
-                            "# \"raan\"=Right ascention of ascending node\n"\
-                            "# \"ecc\"=Eccentricity\n"\
-                            "# \"aop\"=Argument of preigee\n"\
-                            "# \"ma\"=Mean anomaly\n"\
-                            "# \"mm\"=Mean motion\n"\
-                            "#&inc {40,60}\n"\
+                            "# Orbit parameter filter:\n"\
+                            "# All satellites with the apropriate parameter in the "\
+                            "range specified in the braces\n"\
+                            "# One of \"inc\" (inclination), \"apo\" (apoapsis height),"\
+                            "\"peri\" (periapsis height) prefixed with \"%\" and "\
+                            "followed by curly braces in which the lower and upper "\
+                            "(inclusiv) bounds of the range.\n"\
+                            "#%inc {40,60}\n"\
                             "# ^^Matches all satellites with a inclination between "\
                             "40° and 60°\n\n\n")
                 if _verbose:
@@ -325,6 +294,16 @@ if __name__=="__main__":
                 print("ERROR: Failed to read file "+ns.filter+"! ("+str(ioe)+")",
                         file=sys.stderr)
             sys.exit(1)
+    elif ns.filter is None and ns.user_tles is None:
+        if not _quiet:
+            print("ERROR: A filter is required if no user tles are provided!",
+                    file=sys.stderr)
+         sys.exit(1)
+    else:
+        if not _quiet:
+            print("WARNING: If no filter is specified, online loading is disabled!",
+                    file=sys.stderr)
+        ns.no_online=True
 
     tles=[]
 # load user tles
@@ -334,7 +313,7 @@ if __name__=="__main__":
                 if _verbose:
                     print("Reading user defined TLEs ...",file=sys.stderr)
                     oc=len(tles)
-                tles.extend(read_tles_from_bytes(uf.read()))
+                tles.extend(parse_tle_bytes(uf.read()))
                 if _verbose:
                     print("Done reading user TLEs ("+str(len(tles)-oc)+" tles found)",
                             file=sys.stderr)
@@ -345,7 +324,10 @@ if __name__=="__main__":
             print("ERROR: Failed to read file "+ns.user_tles+"! Skipping! ("+str(ioe)+")",
                     file=sys.stderr)
 
-# load online tles
+# filter user tles (if forced)
+    #TODO implement
+
+# load online tles FIXME
     if not ns.no_online:
         if _verbose:
             print("Fetching online TLEs ...",file=sys.stderr)
@@ -353,52 +335,6 @@ if __name__=="__main__":
         if _verbose:
             print("Done fetching online TLEs ("+str(len(tles))+" tles found)",
                     file=sys.stderr)
-
-# deduplicate tles
-    if _verbose:
-        print("Deduplicating TLEs (based on ID)...",file=sys.stderr)
-    tles_old=tles
-    tles=[]
-    for tle in tles_old:
-        if not any(t.id==tle.id for t in tles):
-            tles.append(tle)
-            continue
-        if _verbose:
-            print("Duplicate TLE, dropping ... ("+str(tle.name)+": "+str(tle.id)+")",
-                    file=sys.stderr)
-    del tles_old
-    if _verbose:
-        print("Deduplication done, "+str(len(tles))+" TLEs remaining",file=sys.stderr)
-
-# filter tles
-    if not ns.allobjects and any(len(filterlist[k])>0 for k in filterlist.keys()):
-        if _verbose:
-            print("Filtering "+str(len(tles))+" TLEs based on whitelist "+ns.filter+" ...",
-                    file=sys.stderr)
-        atles=tles
-        tles=[]
-        # TODO find more efficient way to do the filtering
-        for tle in atles:
-            for nfilt in filterlist["name"]:
-                if tle.name.upper().startswith(nfilt.upper()):
-                    tles.append(tle)
-            for lfilt in filterlist["launch"]:
-                if ("%(year)02d%(launch)03d%(object)-s" % tle.desig).upper()\
-                        .startswith(lfilt.upper()):
-                    tles.append(tle)
-            for ifilt in filterlist["id"]:
-                if all(c.isdigit() for c in ifilt) and tle.id==int(ifilt):
-                    tles.append(tle)
-            for ffilt in filterlist["field"]:
-                if getattr(tle,ffilt["field"])>=ffilt["min"] and\
-                        getattr(tle,ffilt["field"])<ffilt["max"]:
-                    tles.append(tle)
-        if _verbose:
-            print("Filtering done, selected "+str(len(tles))+"/"+str(len(atles))+
-                    " TLEs",file=sys.stderr)
-    elif _verbose and ns.allobjects:
-        print("Filtering disable by user request ...",file=sys.stderr)
-
 # list tles
     if ns.list:
         if _verbose:
