@@ -6,7 +6,7 @@
 """
 Update Program for Two-Line-Element Lists. (Version 2)
 
-Generate a filtered TLE list from current online TLE data (from celestrak.com) and
+Generate a TLE file from selected current online TLE data (from celestrak.com) and
 user provided manual TLE data.
 """
 
@@ -178,6 +178,11 @@ def parse_tle_bytes(f):
         state="none"
     return tles
 
+def peri_apo_from_mm_ecc(mm,ecc):
+    mu_e=3.986004418e+14
+    a=pow(mu_e/(mm*mm),1/3.)
+    return a*(1-ecc), a*(1+ecc)
+
 if __name__=="__main__":
     import argparse
     ap=argparse.ArgumentParser(description=__doc__,add_help=False)
@@ -235,9 +240,7 @@ if __name__=="__main__":
                         filterlist["name"].append(l)
             if not any(len(filterlist[k])>0 for k in filterlist.keys()):
                 if not _quiet:
-                    print("ERROR: Filter list contains no valid filters but "\
-                            "to get an unfiltered list you have to use the "\
-                            "\"-a\" paramter!",file=sys.stderr)
+                    print("ERROR: Filter list contains no valid filters!",file=sys.stderr)
                 sys.exit(1)
             if _verbose:
                 print("Filter list successfull loaded. \n"+str(filterlist),
@@ -325,16 +328,74 @@ if __name__=="__main__":
                     file=sys.stderr)
 
 # filter user tles (if forced)
-    #TODO implement
+    if ns.force_user_filtering:
+        if _verbose:
+            print("Filtering user supplied TLEs ...",file=sys.stderr)
+        told=tles
+        tles=[]
+        for tle in told:
+            for nf in filterlist["name"]:
+                if tle.name.upper().startswith(nf.upper()):
+                    tles.append(tle)
+                    break
+            else: for launf in filterlist["launch"]:
+                if ("%(year)02d%(launch)03d%(object)-s" % tle.desig).upper()\
+                        .startswith(launf.upper()):
+                    tles.append(tle)
+                    break
+            else: for idf in filterlist["id"]:
+                if all(c.isdigit() for c in idf) and tle.id==int(idf):
+                    tles.append(tle)
+                    break
+            else: for ff in filterlist["field"]:
+                peri, apo = peri_apo_from_mm_ecc(tle.mm, tle.ecc)
+                if ff["field"]=="inc":
+                    if tle.inc<=ff["max"] and tle.inc>=ff["min"]:
+                        tles.append(tle)
+                        break
+                elif ff["field"]=="peri":
+                    if peri<=ff["max"] and peri>=ff["min"]:
+                        tles.append(tle)
+                        break
+                elif ff["field"]="apo":
+                    if apo<=ff["max"] and apo>=ff["min"]:
+                        tles.append(tle)
+                        break
+        if _verbose:
+            print("Done filtering user supplied TLEs ("+str(len(tles))+\
+                    "/"+str(len(told))+" selected)",file=sys.stderr)
 
 # load online tles FIXME
     if not ns.no_online:
         if _verbose:
             print("Fetching online TLEs ...",file=sys.stderr)
-        tles.extend(get_celestrak_tle())
-        if _verbose:
-            print("Done fetching online TLEs ("+str(len(tles))+" tles found)",
-                    file=sys.stderr)
+        satcat=[]
+        with rq.urlopen("http://www.celestrak.com/pub/satcat.txt") as scr:
+            for l in scr.read().decode("ascii"):
+                if l[21]=="D":
+                    continue
+                launch_s=l[0:11]
+                launch={"year":int(launch_s.split("-")[0]),
+                        "launch":int(launch_s.split("-")[1][0:3]),
+                        "object":launch_s.split("-")[1][3:].strip()}
+                nid_s=l[13:18]
+                if re.match("\s*[-\+\d\.eE]+",nid_s) is not None:
+                    nid=int(nid_s)
+                name_s=l[23:47]
+                inc_s=l[96:101]
+                if re.match("\s*[-\+\d\.eE]+",inc_s) is not None:
+                    inc=float(inc_s)
+                apo_s=l[103:109]
+                if re.match("\s*[-\+\d\.eE]+",apo_s) is not None:
+                    apo=int(apo_s)
+                peri_s=l[111:117]
+                if re.match("\s*[-\+\d\.eE]+",peri_s) is not None:
+                    prei=int(peri_s)
+                orbc_s=l[129:132]
+
+
+
+                    
 # list tles
     if ns.list:
         if _verbose:
