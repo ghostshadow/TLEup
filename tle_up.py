@@ -217,7 +217,7 @@ if __name__=="__main__":
         try:
             with open(ns.filter,"rt") as ff:
                 for l in ff:
-                    l=l.rstrip("\r\n")
+                    l=l.rstrip(" \r\n")
                     if len(l)<1 or l[0]=="#":
                         continue
                     elif l[0]=="?" or l[0]=="\\":
@@ -465,6 +465,7 @@ if __name__=="__main__":
         dlids=[]
         dlscentry=[]
     # check name filters
+        idcnt=len(dlids)
         for nf in filterlist["name"]:
             found=False
             for usn in [tle["name"] for tle in tles]:
@@ -486,7 +487,11 @@ if __name__=="__main__":
                 if not _quiet:
                     print("WARNING: No entry found for \"name\" filter \""+\
                             str(nf)+"\"!",file=sys.stderr)
+        if _verbose:
+            print("Added",len(dlids)-idcnt,"IDs from \"name\" filters",
+                    file=sys.stderr)
     # check id filters
+        idcnt=len(dlids)
         for idf in filterlist["id"]:
             found=False
             for usid in [tle["id"] for tle in tles]:
@@ -505,7 +510,11 @@ if __name__=="__main__":
                 if not _quiet:
                     print("WARNING: No entry found for \"id\" filter \""+str(idf)+\
                             "\"!",file=sys.stderr)
+        if _verbose:
+            print("Added",len(dlids)-idcnt,"IDs from \"id\" filters",
+                    file=sys.stderr)
     # check launch designator filters
+        idcnt=len(dlids)
         for lf in filterlist["launch"]:
             found=False
             for ul in [tle["id"] for tle in tles]:
@@ -531,29 +540,19 @@ if __name__=="__main__":
                 if not _quiet:
                     print("WARNING: No entry found for \"launch designator\" "\
                             "filter \""+str(lf)+"\"!",file=sys.stderr)
+        if _verbose:
+            print("Added",len(dlids)-idcnt,"IDs from \"launch designator\" "\
+                    "filters",file=sys.stderr)
     # check field filters
+        idcnt=len(dlids)
         for ff in filterlist["field"]:
-            found=False
-            for t in [{"mm":tle["mm"], "ecc":tle["ecc"], "inc":tle["inc"]} \
-                    for tle in tles]:
-                peri, apo=peri_apo_from_mm_ecc(t["mm"], t["ecc"])
-                t["peri"]=peri
-                t["apo"]=apo
-                if t[ff["field"]]<=ff["max"] and t[ff["field"]]>=ff["min"]:
-                    found=True
-                    break
-            if found==True:
-                continue
             for scent in satcat:
                 if scent[ff["field"]]<=ff["max"] and scent[ff["field"]]>=ff["min"]:
                     dlids.append(scent["nid"])
                     dlscentry.append(scent)
-                    found=True
-                    break
-            else:
-                if not _quiet:
-                    print("WARNING: No entry found for \"orbit data\" filter \""+\
-                            str(ff)+"\"!",file,sys.stderr)
+        if _verbose:
+            print("Added",len(dlids)-idcnt,"IDs from \"orbit parameter\" filters",
+                    file=sys.stderr)
     # how many objects to download
         if len(dlids)==0 and not _quiet:
             print("WARNING: No IDs to download!",file=sys.stderr)
@@ -561,8 +560,7 @@ if __name__=="__main__":
             print(len(dlids)," TLEs to download...",file=sys.stderr)
         
 # downloading TLEs
-        if _verbose:
-            otlecnt=len(tles)
+        otlecnt=len(tles)
 
         from html.parser import HTMLParser
 
@@ -591,9 +589,6 @@ if __name__=="__main__":
                 ts=parse_tle_bytes(tp.tle_data.lstrip().encode("ascii"))
             if ts is not None and len(ts)>0:
                 tles.extend(ts)
-                if _verbose:
-                    print("Found TLE for \""+str(dlentry["names"][0])+"\":"+str(dlid),
-                            file=sys.stderr)
             elif not _quiet:
                 print("WARNING: No TLE found for \""+str(dlentry["names"][0])+"\":"+\
                         str(dlid)+" (Note: Orbit comment: \""+str(dlentry["raw"]\
