@@ -4,7 +4,7 @@
 # MIT License (see LICENSE file)
 ##
 """
-Update Program for Two-Line-Element Lists. (Version 2)
+Update Program for Two-Line-Element Lists (Version 2).
 
 Generate a TLE file from selected current online TLE data (from celestrak.com) and
 user provided manual TLE data.
@@ -89,13 +89,25 @@ def parse_tle_bytes(f):
     ctle=None
     state="none"
     for l in lines:
-        if state=="line1":
-            match=re.fullmatch("^\s*(2)\s+(\d{1,5})\s+"\
+        m_name=re.fullmatch(b"^\s*((\S.*)?\S)\s*$",l)
+        m_line1=re.fullmatch("^\s*(1)\s+(\d{1,5})(\w)\s+"\
+                "(\d{2})(\d{3})(\w{0,3})\s+(\d{2})(\s{0,2}\d{1,3}\.\d{8})\s+"\
+                "([-+ 0]\.\d{8})\s+([-+ ]\d{5}[-+]\d)\s+([-+ ]\d{5}[-+]\d)\s+"\
+                "(0)\s+(\d{1,4})(\d)\s*$",l.decode("ascii"))
+        m_line2=re.fullmatch("^\s*(2)\s+(\d{1,5})\s+"\
                 "(\d{1,3}\.\d{4})\s+(\d{1,3}\.\d{4})\s+(\d{1,7})\s+"\
                 "(\d{1,3}\.\d{4})\s+(\d{1,3}\.\d{4})\s+"\
                 "(\d{1,2}\.\d{8})(\s*\d{1,5})(\d)\s*$",l.decode("ascii"))
-            if match:
-                cksum=int(match.group(10))
+        if (state=="name" and m_line1 is None) or (state=="line1" and m_line2 is None):
+            if not _quiet:
+                print("WARNING: Non consecutive TLE line ("+str(l)+\
+                        "), discards partial TLE (\""+str(ctle.name)+"\":"+\
+                        str(ctle.id)+")",file=sys.stderr)
+            ctle=None
+            state="none"
+
+        if state=="line1" and m_line2 is not None:
+                cksum=int(m_line2.group(10))
                 nsum=0
                 for c in l.strip(b" \r\n\t")[:-1].decode("ascii"):
                     if c.isdigit():
@@ -108,7 +120,7 @@ def parse_tle_bytes(f):
                     print("WARNING: checksum did not match [check(\""+\
                             l.strip(b" \r\n\t").decode("ascii")+"\")="+\
                             str(nsum)+"!="+str(cksum)+"]",file=sys.stderr)
-                newid=int(match.group(2))
+                newid=int(m_line2.group(2))
                 if newid!=ctle.id:
                     if not _quiet:
                         print("ERROR: unexpeced id in second line, skipping!",
@@ -116,27 +128,21 @@ def parse_tle_bytes(f):
                     ctle=None
                     state="none"
                     continue
-                ctle.inc=float(match.group(3))
-                ctle.raan=float(match.group(4))
-                ctle.ecc=float("0."+match.group(5))
-                ctle.aop=float(match.group(6))
-                ctle.ma=float(match.group(7))
-                ctle.mm=float(match.group(8))
-                ctle.revol=int(match.group(9))
+                ctle.inc=float(m_line2.group(3))
+                ctle.raan=float(m_line2.group(4))
+                ctle.ecc=float("0."+m_line2.group(5))
+                ctle.aop=float(m_line2.group(6))
+                ctle.ma=float(m_line2.group(7))
+                ctle.mm=float(m_line2.group(8))
+                ctle.revol=int(m_line2.group(9))
                 tles.append(copy.deepcopy(ctle))
                 if _verbose:
                     print("Successfully read in TLE for \""+ctle.name+"\": "+str(ctle.id),
                         file=sys.stderr)
                 ctle=None
                 state="none"
-                continue
-        if state=="name":
-            match=re.fullmatch("^\s*(1)\s+(\d{1,5})(\w)\s+"\
-                "(\d{2})(\d{3})(\w{0,3})\s+(\d{2})(\s{0,2}\d{1,3}\.\d{8})\s+"\
-                "([-+ 0]\.\d{8})\s+([-+ ]\d{5}[-+]\d)\s+([-+ ]\d{5}[-+]\d)\s+"\
-                "(0)\s+(\d{1,4})(\d)\s*$",l.decode("ascii"))
-            if match:
-                cksum=int(match.group(14))
+        elif state=="name" and m_line1 is not None:
+                cksum=int(m_line1.group(14))
                 nsum=0
                 for c in l.strip(b" \r\n\t")[:-1].decode("ascii"):
                     if c.isdigit():
@@ -149,39 +155,31 @@ def parse_tle_bytes(f):
                     print("WARNING: checksum did not match [check(\""+\
                             l.strip(b" \r\n\t").decode("ascii")+"\")="+\
                             str(nsum)+"!="+str(cksum)+"]",file=sys.stderr)
-                ctle.id=int(match.group(2))
-                ctle.desig["year"]=int(match.group(4))
-                ctle.desig["launch"]=int(match.group(5))
-                ctle.desig["object"]=match.group(6)
-                ctle.epoch["year"]=int(match.group(7))
-                ctle.epoch["day"]=float(match.group(8))
-                fdmm_str=match.group(9)
+                ctle.id=int(m_line1.group(2))
+                ctle.desig["year"]=int(m_line1.group(4))
+                ctle.desig["launch"]=int(m_line1.group(5))
+                ctle.desig["object"]=m_line1.group(6)
+                ctle.epoch["year"]=int(m_line1.group(7))
+                ctle.epoch["day"]=float(m_line1.group(8))
+                fdmm_str=m_line1.group(9)
                 ctle.fdmm=float(fdmm_str[0]+"0"+fdmm_str[1:])
-                sdmm_str=match.group(10)
+                sdmm_str=m_line1.group(10)
                 ctle.sdmm=float(sdmm_str[0]+"0."+sdmm_str[1:6]+"e"+sdmm_str[6:])
-                bstar_str=match.group(11)
+                bstar_str=m_line1.group(11)
                 ctle.bstar=float(bstar_str[0]+"0."+bstar_str[1:6]+"e"+bstar_str[6:])
-                ctle.nr=int(match.group(13))
+                ctle.nr=int(m_line1.group(13))
                 state="line1"
-                continue
-        if state=="none":
-            match=re.fullmatch(b"^\s*((\S.*)?\S)\s*$",l)
-            if match:
+        elif state=="none" and m_name is not None:
                 ctle=tle()
-                ctle.name=match.group(1).decode("ascii")
+                ctle.name=m_name.group(1).decode("ascii")
                 state="name"
-                continue
-        if not _quiet:
-            print("WARNING: Non-TLE line, might discard partial TLE ("+str(l)+")",
-                    file=sys.stderr)
-        ctle=None
-        state="none"
     return tles
 
 def peri_apo_from_mm_ecc(mm,ecc):
     mu_e=3.986004418e+14
+    r_e=6.371e+3
     a=pow(mu_e/(mm*mm),1/3.)
-    return a*(1-ecc), a*(1+ecc)
+    return a*(1-ecc)-r_e, a*(1+ecc)-r_e
 
 if __name__=="__main__":
     import argparse
@@ -190,7 +188,7 @@ if __name__=="__main__":
     ap.add_argument("--list","-l",action="store_true",help="only list "\
             "names and id numbers of the objects, which are selected, "\
             "do not generate tle file.")
-    ap.add_argument("--filter","-f",action="store",type=str,default=None
+    ap.add_argument("--filter","-f",action="store",type=str,default=None,
             help="specify a filter list; if a none exsistent file is specified, "\
                     "the file is created and filled with a template of the syntax "\
                     "(if none is specified then online loading is disabled)")
@@ -223,11 +221,31 @@ if __name__=="__main__":
                     if len(l)<1 or l[0]=="#":
                         continue
                     elif l[0]=="?" or l[0]=="\\":
-                        filterlist["name"].append(l[1:])
+                        if len(l[1:].strip())>0:
+                            filterlist["name"].append(l[1:])
+                        elif not _quiet:
+                            print("ERROR: An empty name is not a valid filter!",
+                                    file=sys.stderr)
                     elif l[0]=="$":
-                        filterlist["id"].append(l[1:])
+                        if all(c.isdigit() for c in l[1:].strip()):
+                            filterlist["id"].append(int(l[1:].strip()))
+                        elif not _quiet:
+                            print("ERROR: \""+l[1:]+"\" is not a valid NORAD "\
+                                    "ID!",file=sys.stderr)
                     elif l[0]=="~":
-                        filterlist["launch"].append(l[1:])
+                        match=re.fullmatch("^~(\d{1,2}\d{,2}?)-?((\d{,3})"\
+                                "([a-zA-Z]{,3})?)?\s*$",l)
+                        if match is not None:
+                            filterlist["launch"].append({
+                                "year":int(match.group(1)) if match.group(1) \
+                                        is not None else None,
+                                "launch":int(match.group(3)) if match.group(3) \
+                                        is not None else None,
+                                "object":match.group(4)
+                                })
+                        elif not _quiet:
+                            print("ERROR: \""+l[1:]+"\" is not a valid launch "\
+                                    "designator!",file=sys.stderr)
                     elif l[0]=="%":
                         match=re.fullmatch("^%(inc|apo|peri)\s+{\s*([\d.+-eE]+)\s*,"\
                                 "\s*([\d.+-eE]+)\s*}\s*$",l)
@@ -273,7 +291,13 @@ if __name__=="__main__":
                             "# ^^Matches the satellite launched on the 36th launch "\
                             "of 2017 which is designated object \"N\" of the launch\n"\
                             "#~18\n"\
-                            "# ^^Matches all satellites launched in 2018\n\n"\
+                            "# ^^Matches all satellites launched in 2018\n"\
+                            "# An extended version with the year beeing written in as "\
+                            "4 digits is also available (but the year has to be "\
+                            "seperated by a hyphon \"-\" from the launch number)\n"\
+                            "#~2018-002\n"\
+                            "# ^^Matches all objects launched with the 2nd launch "\
+                            "of 2018\n\n"\
                             "# Orbit parameter filter:\n"\
                             "# All satellites with the apropriate parameter in the "\
                             "range specified in the braces\n"\
@@ -301,7 +325,7 @@ if __name__=="__main__":
         if not _quiet:
             print("ERROR: A filter is required if no user tles are provided!",
                     file=sys.stderr)
-         sys.exit(1)
+        sys.exit(1)
     else:
         if not _quiet:
             print("WARNING: If no filter is specified, online loading is disabled!",
@@ -334,54 +358,86 @@ if __name__=="__main__":
         told=tles
         tles=[]
         for tle in told:
+            found=False
             for nf in filterlist["name"]:
                 if tle.name.upper().startswith(nf.upper()):
                     tles.append(tle)
+                    found=True
                     break
-            else: for launf in filterlist["launch"]:
+            if found:
+                continue
+            for launf in filterlist["launch"]:
                 if ("%(year)02d%(launch)03d%(object)-s" % tle.desig).upper()\
                         .startswith(launf.upper()):
                     tles.append(tle)
+                    found=True
                     break
-            else: for idf in filterlist["id"]:
+            if found:
+                continue
+            for idf in filterlist["id"]:
                 if all(c.isdigit() for c in idf) and tle.id==int(idf):
                     tles.append(tle)
+                    found=True
                     break
-            else: for ff in filterlist["field"]:
+            if found:
+                continue
+            for ff in filterlist["field"]:
                 peri, apo = peri_apo_from_mm_ecc(tle.mm, tle.ecc)
                 if ff["field"]=="inc":
                     if tle.inc<=ff["max"] and tle.inc>=ff["min"]:
                         tles.append(tle)
+                        found=True
                         break
                 elif ff["field"]=="peri":
                     if peri<=ff["max"] and peri>=ff["min"]:
                         tles.append(tle)
+                        found=True
                         break
-                elif ff["field"]="apo":
+                elif ff["field"]=="apo":
                     if apo<=ff["max"] and apo>=ff["min"]:
                         tles.append(tle)
+                        found=True
                         break
         if _verbose:
             print("Done filtering user supplied TLEs ("+str(len(tles))+\
                     "/"+str(len(told))+" selected)",file=sys.stderr)
 
-# load online tles FIXME
+# load online tles
     if not ns.no_online:
         if _verbose:
             print("Fetching online TLEs ...",file=sys.stderr)
+            print("Reading SATCAT ...",file=sys.stderr)
+        altsatnames=[]
+        with rq.urlopen("http://www.celestrak.com/pub/satcat-annex.txt") as scar:
+            for bl in scar:
+                l=bl.decode("ascii").rstrip("\r\n")
+                le=l.split("|")
+                if len(le)>1 and all(c.isdigit() for c in le[0]):
+                    altsatnames.append({
+                        "id":int(le[0]),
+                        "names":[n.strip() for n in le[1:]]})
+# read in satellite catalog (discard decayed satellites)
         satcat=[]
         with rq.urlopen("http://www.celestrak.com/pub/satcat.txt") as scr:
-            for l in scr.read().decode("ascii"):
+            for bl in scr:
+                l=bl.decode("ascii").rstrip("\r\n")
                 if l[21]=="D":
                     continue
                 launch_s=l[0:11]
-                launch={"year":int(launch_s.split("-")[0]),
-                        "launch":int(launch_s.split("-")[1][0:3]),
-                        "object":launch_s.split("-")[1][3:].strip()}
+                if re.match("\s*[-\+\d]+-[-\+\d]+\a*",launch_s) is not None:
+                    launch={"year":int(launch_s.split("-")[0]),
+                            "launch":int(launch_s.split("-")[1][0:3]),
+                             "object":launch_s.split("-")[1][3:].strip()}
                 nid_s=l[13:18]
                 if re.match("\s*[-\+\d\.eE]+",nid_s) is not None:
                     nid=int(nid_s)
                 name_s=l[23:47]
+                names=[name_s.strip()]
+                if "&" in name_s:
+                    names=[n.strip() for n in name_s.split("&")]
+                if "nid" in locals() and nid in [an["id"] for an in altsatnames]:
+                    names.extend(altsatnames[[an["id"] for an in altsatnames].\
+                            index(nid)]["names"])
                 inc_s=l[96:101]
                 if re.match("\s*[-\+\d\.eE]+",inc_s) is not None:
                     inc=float(inc_s)
@@ -392,10 +448,162 @@ if __name__=="__main__":
                 if re.match("\s*[-\+\d\.eE]+",peri_s) is not None:
                     prei=int(peri_s)
                 orbc_s=l[129:132]
+                satcat.append({
+                    "raw":{"launch":launch_s, "nid":nid_s, "name":name_s,
+                        "inc":inc_s, "apo":apo_s, "peri":peri_s, "orbc":orbc_s},
+                    "launch":launch if "launch" in locals() else None,
+                    "nid":nid if "nid" in locals() else None,
+                    "names":names if len(names)>1 or len(names[0])>0 else None,
+                    "inc":inc if "inc" in locals() else None,
+                    "apo":apo if "apo" in locals() else None,
+                    "peri":peri if "peri" in locals() else None })
+        if _verbose:
+            print("SATCAT loaded; "+str(len(satcat))+" not decayed satellites "\
+                    "found!",file=sys.stderr)
+            print("Compiling list of TLEs to download...",file=sys.stderr)
+# compile list of TLEs to download
+        dlids=[]
+        dlscentry=[]
+    # check name filters
+        for nf in filterlist["name"]:
+            found=False
+            for usn in [tle["name"] for tle in tles]:
+                if usn.upper().startswith(nf.strip().upper()):
+                    found=True
+                    break
+            if found==True:
+                continue
+            for scent in satcat:
+                for satn in scent["names"]:
+                    if satn.upper().startswith(nf.strip().upper()):
+                        dlids.append(scent["nid"])
+                        dlscentry.append(scent)
+                        found=True
+                        break
+                if found==True:
+                    break
+            else:
+                if not _quiet:
+                    print("WARNING: No entry found for \"name\" filter \""+\
+                            str(nf)+"\"!",file=sys.stderr)
+    # check id filters
+        for idf in filterlist["id"]:
+            found=False
+            for usid in [tle["id"] for tle in tles]:
+                if usid==idf:
+                    found=True
+                    break
+            if found==True:
+                continue
+            for scent in satcat:
+                if scent["nid"]==idf:
+                    dlids.append(scent["nid"])
+                    dlscentry.append(scent)
+                    found=True
+                    break
+            else:
+                if not _quiet:
+                    print("WARNING: No entry found for \"id\" filter \""+str(idf)+\
+                            "\"!",file=sys.stderr)
+    # check launch designator filters
+        for lf in filterlist["launch"]:
+            found=False
+            for ul in [tle["id"] for tle in tles]:
+                if ul["launch"]["year"]==(lf["year"]%100) and \
+                        (lf["launch"] is None or ul["launch"]["launch"]==\
+                        lf["launch"]) and (lf["object"] is None or \
+                        ul["launch"]["object"]==lf["object"]):
+                    found=True
+                    break
+            if found==True:
+                continue
+            for scent in satcat:
+                if scent["launch"] is not None and \
+                        (scent["launch"]["year"]%100)==(lf["year"]%100) and \
+                        (lf["launch"] is None or scent["launch"]["launch"]==\
+                        lf["launch"]) and (lf["object"] is None or scent["launch"]\
+                        ["object"]==lf["object"]):
+                    dlids.append(scent["nid"])
+                    dlscentry.append(scent)
+                    found=True
+                    break
+            else:
+                if not _quiet:
+                    print("WARNING: No entry found for \"launch designator\" "\
+                            "filter \""+str(lf)+"\"!",file=sys.stderr)
+    # check field filters
+        for ff in filterlist["field"]:
+            found=False
+            for t in [{"mm":tle["mm"], "ecc":tle["ecc"], "inc":tle["inc"]} \
+                    for tle in tles]:
+                peri, apo=peri_apo_from_mm_ecc(t["mm"], t["ecc"])
+                t["peri"]=peri
+                t["apo"]=apo
+                if t[ff["field"]]<=ff["max"] and t[ff["field"]]>=ff["min"]:
+                    found=True
+                    break
+            if found==True:
+                continue
+            for scent in satcat:
+                if scent[ff["field"]]<=ff["max"] and scent[ff["field"]]>=ff["min"]:
+                    dlids.append(scent["nid"])
+                    dlscentry.append(scent)
+                    found=True
+                    break
+            else:
+                if not _quiet:
+                    print("WARNING: No entry found for \"orbit data\" filter \""+\
+                            str(ff)+"\"!",file,sys.stderr)
+    # how many objects to download
+        if len(dlids)==0 and not _quiet:
+            print("WARNING: No IDs to download!",file=sys.stderr)
+        elif _verbose:
+            print(len(dlids)," TLEs to download...",file=sys.stderr)
+        
+# downloading TLEs
+        if _verbose:
+            otlecnt=len(tles)
+
+        from html.parser import HTMLParser
+
+        class TLE_HTML(HTMLParser):
+            def __init__(self,*args,**kwargs):
+                self.read_tle_data=False
+                self.tle_data=""
+                HTMLParser.__init__(self,*args,**kwargs)
+            def handle_starttag(self, tag, attr):
+                if tag=="pre":
+                    self.read_tle_data=True
+            def handle_endtag(self, tag):
+                if tag=="pre":
+                    self.read_tle_data=False
+            def handle_data(self, data):
+                if "read_tle_data" in dir(self) and self.read_tle_data:
+                    self.tle_data+=data
 
 
+        for dlid, dlentry in zip(dlids,dlscentry):
+            ts=None
+            with rq.urlopen("http://www.celestrak.com/cgi-bin/TLE.pl?CATNR="+\
+                    str(dlid)) as tlr:
+                tp=TLE_HTML()
+                tp.feed(tlr.read().decode())
+                ts=parse_tle_bytes(tp.tle_data.lstrip().encode("ascii"))
+            if ts is not None and len(ts)>0:
+                tles.extend(ts)
+                if _verbose:
+                    print("Found TLE for \""+str(dlentry["names"][0])+"\":"+str(dlid),
+                            file=sys.stderr)
+            elif not _quiet:
+                print("WARNING: No TLE found for \""+str(dlentry["names"][0])+"\":"+\
+                        str(dlid)+" (Note: Orbit comment: \""+str(dlentry["raw"]\
+                        ["orbc"])+"\")!",file=sys.stderr)
+        if _verbose:
+            print("Downloaded",len(tles)-otlecnt,file=sys.stderr)
 
-                    
+    if _verbose:
+        print("A total of "+str(len(tles))+" TLEs have been loaded",file=sys.stderr)
+
 # list tles
     if ns.list:
         if _verbose:
